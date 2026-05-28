@@ -79,7 +79,7 @@ export default function Home() {
   return (
     <main className="relative z-10">
       {/* Hero */}
-      <section className="min-h-screen flex items-center pt-20 pb-16 px-6">
+      <section className="min-h-screen flex items-center pt-20 pb-16 px-4 sm:px-6">
         <div className="max-w-6xl mx-auto w-full grid lg:grid-cols-2 gap-12 items-center">
           {/* Left */}
           <motion.div
@@ -175,7 +175,7 @@ export default function Home() {
       </section>
 
       {/* Stats */}
-      <section className="px-6 pb-20">
+      <section className="px-4 sm:px-6 pb-20">
         <div className="max-w-6xl mx-auto grid grid-cols-2 lg:grid-cols-4 gap-4">
           {STATS.map(({ label, value, icon: Icon, color }, i) => (
             <motion.div
@@ -195,7 +195,7 @@ export default function Home() {
       </section>
 
       {/* Skills */}
-      <section className="px-6 pb-20">
+      <section className="px-4 sm:px-6 pb-20">
         <div className="max-w-6xl mx-auto">
           <div className="flex items-center gap-3 mb-8">
             <Code2 className="w-5 h-5 text-cyber-green" />
@@ -212,9 +212,9 @@ export default function Home() {
                   viewport={{ once: true }}
                   transition={{ delay: i * 0.1 }}
                 >
-                  <div className="flex justify-between items-center mb-1.5">
-                    <span className="font-mono text-sm text-gray-300">{label}</span>
-                    <span className="font-mono text-xs" style={{ color: hex }}>{level}%</span>
+                  <div className="flex items-center justify-between gap-3 mb-1.5">
+                    <span className="font-mono text-sm text-gray-300 min-w-0 leading-snug">{label}</span>
+                    <span className="font-mono text-xs flex-shrink-0" style={{ color: hex }}>{level}%</span>
                   </div>
                   <div className="h-1.5 bg-cyber-border rounded-full overflow-hidden">
                     <motion.div
@@ -264,7 +264,7 @@ export default function Home() {
       </section>
 
       {/* Recent posts */}
-      <section className="px-6 pb-24">
+      <section className="px-4 sm:px-6 pb-24">
         <div className="max-w-6xl mx-auto">
           <div className="flex items-center justify-between mb-8">
             <div className="flex items-center gap-3">

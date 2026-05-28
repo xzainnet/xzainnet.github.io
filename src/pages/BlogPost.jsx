@@ -696,7 +696,7 @@ if __name__ == "__main__":
           { date: 'Day 14', event: 'Authorization checks deployed to production',                    color: 'text-cyber-green' },
           { date: 'Day 21', event: 'Hardcoded key removed; server-side token system implemented',    color: 'text-cyber-green' },
         ].map(({ date, event, color }, i) => (
-          <div key={i} className="flex items-center gap-4 px-5 py-3 border-b border-cyber-border/20 last:border-0 hover:bg-cyber-bg/30 transition-colors">
+          <div key={i} className="flex items-start gap-4 px-5 py-3 border-b border-cyber-border/20 last:border-0 hover:bg-cyber-bg/30 transition-colors">
             <span className="font-mono text-xs text-gray-600 w-12 flex-shrink-0">{date}</span>
             <span className={`font-mono text-xs ${color}`}>{event}</span>
           </div>
@@ -753,7 +753,7 @@ export default function BlogPost() {
   if (!post) return <Navigate to="/blog" replace />
 
   return (
-    <main className="relative z-10 pt-24 pb-24 px-6">
+    <main className="relative z-10 pt-24 pb-24 px-4 sm:px-6">
       <div className="max-w-4xl mx-auto">
 
         <Link
@@ -767,7 +767,7 @@ export default function BlogPost() {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="glass-card p-8 mb-8 overflow-hidden relative"
+          className="glass-card p-5 sm:p-8 mb-8 overflow-hidden relative"
         >
           <div className={clsx('absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r', post.coverGradient.split(' ')[0], 'to-cyber-blue/60')} />
 
@@ -810,7 +810,7 @@ export default function BlogPost() {
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.15 }}
-          className="glass-card p-8"
+          className="glass-card p-4 sm:p-8"
         >
           <PostContent slug={slug} />
         </motion.div>

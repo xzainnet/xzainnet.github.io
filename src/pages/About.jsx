@@ -79,7 +79,7 @@ const levelTextClass = (p) => p >= 90 ? 'text-cyber-green' : p >= 80 ? 'text-cyb
 
 export default function About() {
   return (
-    <main className="relative z-10 pt-24 pb-24 px-6">
+    <main className="relative z-10 pt-24 pb-24 px-4 sm:px-6">
       <div className="max-w-5xl mx-auto">
 
         {/* Profile hero */}
@@ -217,7 +217,7 @@ export default function About() {
                 <h2 className="section-heading text-xl">Technical Skills</h2>
               </div>
 
-              <div className="glass-card p-5 space-y-4">
+              <div className="glass-card p-5 space-y-5">
                 {SKILLS.map(({ name, proficiency, category }, i) => (
                   <motion.div
                     key={name}
@@ -226,13 +226,18 @@ export default function About() {
                     viewport={{ once: true }}
                     transition={{ delay: i * 0.07 }}
                   >
-                    <div className="flex items-center justify-between mb-1.5">
-                      <div>
-                        <span className="font-mono text-sm text-gray-300">{name}</span>
-                        <span className="font-mono text-xs text-gray-600 ml-2">{category}</span>
+                    <div className="flex items-start justify-between gap-3 mb-1.5">
+                      <div className="min-w-0 flex-1">
+                        <span className="font-mono text-sm text-gray-300 leading-snug break-words">
+                          {name}
+                        </span>
+                        <span className="font-mono text-xs text-gray-600 ml-2 hidden sm:inline">
+                          {category}
+                        </span>
                       </div>
-                      <span className={`font-mono text-xs ${levelTextClass(proficiency)}`}>
-                        {levelLabel(proficiency)} ({proficiency}%)
+                      <span className={`font-mono text-xs ${levelTextClass(proficiency)} flex-shrink-0 text-right`}>
+                        {levelLabel(proficiency)}{' '}
+                        <span className="opacity-75">({proficiency}%)</span>
                       </span>
                     </div>
                     <div className="h-1.5 bg-cyber-border rounded-full overflow-hidden">
