@@ -87,7 +87,7 @@ export default function About() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
-          className="glass-card p-8 mb-10"
+          className="glass-card p-5 sm:p-8 mb-10"
         >
           <div className="flex flex-col md:flex-row gap-8 items-start">
             {/* Avatar */}
@@ -102,7 +102,7 @@ export default function About() {
 
             {/* Info */}
             <div className="flex-1">
-              <h1 className="text-3xl font-bold text-white mb-0.5">Yousef Zain Aldeen</h1>
+              <h1 className="text-2xl sm:text-3xl font-bold text-white mb-0.5">Yousef Zain Aldeen</h1>
               <p className="text-cyber-green font-mono text-sm mb-3">
                 Developer · Security Professional · Computer Engineer
               </p>

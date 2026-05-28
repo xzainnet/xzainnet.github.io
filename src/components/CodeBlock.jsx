@@ -62,16 +62,20 @@ export default function CodeBlock({ code, language = 'bash', filename }) {
         </button>
       </div>
 
-      <SyntaxHighlighter
-        language={language}
-        style={customStyle}
-        showLineNumbers
-        wrapLines
-        customStyle={{ background: 'transparent' }}
-        lineNumberStyle={{ color: '#374151', fontSize: '0.7rem', minWidth: '2rem', paddingRight: '1rem' }}
-      >
-        {code.trim()}
-      </SyntaxHighlighter>
+      {/* overflow-x-auto here lets code scroll horizontally while the
+          outer overflow-hidden still clips the rounded corners */}
+      <div className="overflow-x-auto">
+        <SyntaxHighlighter
+          language={language}
+          style={customStyle}
+          showLineNumbers
+          wrapLines
+          customStyle={{ background: 'transparent', margin: 0 }}
+          lineNumberStyle={{ color: '#374151', fontSize: '0.7rem', minWidth: '2rem', paddingRight: '1rem' }}
+        >
+          {code.trim()}
+        </SyntaxHighlighter>
+      </div>
     </div>
   )
 }

@@ -56,7 +56,7 @@ export default function DirectoryTree({ title, tree }) {
         <Folder className="w-3.5 h-3.5 text-cyber-blue" />
         <span className="font-mono text-xs text-gray-400">{title || 'directory'}</span>
       </div>
-      <div className="p-3">
+      <div className="p-3 overflow-x-auto">
         {tree.map((node, i) => (
           <TreeNode key={i} node={node} />
         ))}

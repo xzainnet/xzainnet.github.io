@@ -386,11 +386,11 @@ grep -i "encrypt" blutter_output/pp.txt | head -20`} />
         <div className="px-4 py-2.5 bg-cyber-bg/60 border-b border-cyber-border font-mono text-xs text-gray-400">
           pp.txt — relevant excerpt
         </div>
-        <div className="p-4 font-mono text-xs leading-loose">
-          <div><span className="text-gray-600">0x00ab1234  </span><span className="text-cyber-purple">String</span><span className="text-gray-500">: </span><span className="text-cyber-green">"AES/CBC/PKCS7"</span>            <span className="text-gray-600">// cipher suite</span></div>
-          <div><span className="text-gray-600">0x00ab1248  </span><span className="text-cyber-purple">String</span><span className="text-gray-500">: </span><span className="text-cyber-red">"Hx7Kp2Qm9Nw3Rz6Y"</span>        <span className="text-gray-600">// AES-128 key (16 bytes) ⭐</span></div>
-          <div><span className="text-gray-600">0x00ab125c  </span><span className="text-cyber-purple">String</span><span className="text-gray-500">: </span><span className="text-cyber-red">"Jv4Ls8Ft1Ue5Xb0D"</span>        <span className="text-gray-600">// IV (16 bytes) ⭐</span></div>
-          <div><span className="text-gray-600">0x00ab1270  </span><span className="text-cyber-purple">Type</span><span className="text-gray-500">:   </span><span className="text-cyber-blue">AesEncryptionHelper</span>        <span className="text-gray-600">// class reference</span></div>
+        <div className="p-4 font-mono text-xs leading-loose overflow-x-auto">
+          <div className="whitespace-nowrap"><span className="text-gray-600">0x00ab1234  </span><span className="text-cyber-purple">String</span><span className="text-gray-500">: </span><span className="text-cyber-green">"AES/CBC/PKCS7"</span>            <span className="text-gray-600">// cipher suite</span></div>
+          <div className="whitespace-nowrap"><span className="text-gray-600">0x00ab1248  </span><span className="text-cyber-purple">String</span><span className="text-gray-500">: </span><span className="text-cyber-red">"Hx7Kp2Qm9Nw3Rz6Y"</span>        <span className="text-gray-600">// AES-128 key (16 bytes) ⭐</span></div>
+          <div className="whitespace-nowrap"><span className="text-gray-600">0x00ab125c  </span><span className="text-cyber-purple">String</span><span className="text-gray-500">: </span><span className="text-cyber-red">"Jv4Ls8Ft1Ue5Xb0D"</span>        <span className="text-gray-600">// IV (16 bytes) ⭐</span></div>
+          <div className="whitespace-nowrap"><span className="text-gray-600">0x00ab1270  </span><span className="text-cyber-purple">Type</span><span className="text-gray-500">:   </span><span className="text-cyber-blue">AesEncryptionHelper</span>        <span className="text-gray-600">// class reference</span></div>
         </div>
       </div>
 
@@ -674,7 +674,11 @@ if __name__ == "__main__":
             <div className="flex-1">
               <div className="flex items-start justify-between gap-3 mb-1.5">
                 <h4 className="font-mono font-semibold text-white text-sm">{title}</h4>
-                <span className="font-mono text-xs px-2 py-0.5 rounded-full border flex-shrink-0" style={{ color, borderColor: color + '50', backgroundColor: color + '10' }}>{priority}</span>
+                <span className="font-mono text-xs px-2 py-0.5 rounded-full border flex-shrink-0" style={{ color, borderColor: color + '50', backgroundColor: color + '10' }}>
+                  {/* Abbreviated on mobile, full label on sm+ */}
+                  <span className="sm:hidden">{priority.split(' — ')[0]}</span>
+                  <span className="hidden sm:inline">{priority}</span>
+                </span>
               </div>
               <p className="text-xs text-gray-500 leading-relaxed">{desc}</p>
             </div>
