@@ -84,7 +84,7 @@ export default function Blog() {
 
           {/* Tag filter */}
           <div className="flex flex-wrap gap-1.5">
-            {ALL_TAGS.slice(0, 12).map((t) => (
+            {ALL_TAGS.slice(0, 20).map((t) => (
               <button
                 key={t}
                 onClick={() => setTag(t)}

