@@ -1,5 +1,21 @@
 export const posts = [
   {
+    id: 'nafath-auth-bypass-national-id',
+    slug: 'nafath-auth-bypass-national-id',
+    title: "Nafath Verification Bypass Allows Account Registration Under Any Citizen's National ID",
+    excerpt:
+      "An authentication bypass in a government portal's Nafath identity verification flow allowed creating accounts under arbitrary national IDs without completing the required verification — enabling full identity impersonation across any service that trusts Nafath authentication.",
+    date: '2026-06-01',
+    readTime: '10 min',
+    severity: 'Critical',
+    bounty: null,
+    platform: 'Bug Bounty',
+    tags: ['Auth Bypass', 'Nafath', 'Identity', 'Government', 'Bug Bounty', 'Registration'],
+    category: 'Bug Bounty',
+    coverGradient: 'from-purple-900/40 via-cyber-bg to-cyber-bg',
+    accentColor: 'purple',
+  },
+  {
     id: 'idor-license-api-enumeration',
     slug: 'idor-license-api-enumeration',
     title: "IDOR in License Verification API Enables Full Investor Database Enumeration",

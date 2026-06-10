@@ -731,6 +731,341 @@ if __name__ == "__main__":
   )
 }
 
+/* ─── Nafath Bypass Post ────────────────────────────── */
+function NafathBypassPost() {
+  return (
+    <div className="text-gray-400 text-sm leading-relaxed">
+
+      {/* ── Overview ─────────────────────────────── */}
+      <div className="glass-card p-5 sm:p-6 mb-8 border-l-4 border-cyber-red">
+        <h3 className="font-mono font-bold text-white text-base mb-3 flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 text-cyber-red" /> Executive Summary
+        </h3>
+        <P>
+          During a bug bounty engagement on a government investment portal, I discovered a{' '}
+          <span className="text-cyber-red font-semibold">Critical-severity authentication bypass</span>{' '}
+          in the platform's Nafath identity verification integration. The registration flow
+          presented a Nafath challenge that was supposed to prove ownership of the supplied
+          national ID — but the backend{' '}
+          <span className="text-cyber-red font-semibold">never validated that the challenge was approved</span>{' '}
+          before creating the account. An attacker could skip the entire verification step by
+          sending the registration request directly, registering under any citizen's national ID
+          without their knowledge or consent.
+        </P>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
+          {[
+            { label: 'Severity', value: 'Critical',             color: '#ff4455' },
+            { label: 'Type',     value: 'Auth Bypass',          color: '#00ff88' },
+            { label: 'Platform', value: 'Bug Bounty',           color: '#00cfff' },
+            { label: 'Impact',   value: 'Identity Impersonation', color: '#ff4455' },
+          ].map(({ label, value, color }) => (
+            <div key={label} className="bg-cyber-bg/60 rounded-lg p-3 border border-cyber-border/40">
+              <p className="font-mono text-xs text-gray-600 mb-1">{label}</p>
+              <p className="font-mono text-xs font-bold leading-snug" style={{ color }}>{value}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Step 1 ───────────────────────────────── */}
+      <H2>Step 1 — Understanding the Nafath Verification Model</H2>
+      <P>
+        The platform used Nafath — Saudi Arabia's national digital identity verification
+        service — as the authoritative method for proving that a registering user is
+        who they claim to be. The intended flow was:
+      </P>
+
+      <CodeBlock language="bash" filename="expected_flow.txt" code={`# Expected registration flow
+1. User visits the registration page
+2. User fills in account details (name, email, password)
+3. Platform presents a Nafath verification popup
+4. User enters their National ID → platform calls Nafath API
+5. Nafath sends a push notification to the citizen's registered mobile
+6. Citizen opens the Nafath app and taps "Approve"
+7. Platform receives the Nafath approval callback
+8. Backend creates the account — National ID ownership confirmed ✓
+
+# The security guarantee: only the physical holder of the Nafath-registered
+# device (the real citizen) can approve the challenge.`} />
+
+      <Callout type="info" title="What Is Nafath?">
+        Nafath (نفاذ) is Saudi Arabia's unified national digital identity platform, equivalent
+        to services like FranceConnect or Sweden's BankID. It issues push notifications to a
+        citizen's registered device to confirm identity for government and financial services.
+        When a platform delegates identity verification to Nafath, it implicitly trusts that
+        a successfully verified national ID was confirmed by the physical device owner.
+      </Callout>
+
+      <P>
+        The security model depends entirely on Step 6 — the citizen's in-app approval. If
+        the platform allows account creation without confirming that approval occurred, the
+        entire Nafath integration is meaningless. That is exactly the flaw I found.
+      </P>
+
+      {/* ── Step 2 ───────────────────────────────── */}
+      <H2>Step 2 — Mapping the Registration Request</H2>
+      <P>
+        I navigated to the platform's registration page and initiated the flow with Burp
+        Suite running as proxy. Upon clicking <IC>Complete Profile</IC>, a Nafath
+        verification popup appeared asking for my national ID. I entered a test value
+        and captured all outbound requests.
+      </P>
+      <P>
+        The Nafath verification step triggered a POST request that established my session.
+        I copied the <IC>Cookie</IC> header and <IC>X-Usertoken</IC> header from this
+        request — these are the only credentials required for subsequent API calls.
+      </P>
+
+      <Callout type="warning" title="Session Token Acquisition">
+        The <IC>X-Usertoken</IC> and session cookies can be extracted from any request
+        sent to the server during the Nafath flow — including the initial challenge
+        request. No prior account or authenticated session is required; initiating the
+        Nafath popup is sufficient.
+      </Callout>
+
+      <P>
+        With the session tokens in hand, I examined the registration API call that the
+        frontend would send <em>after</em> Nafath approval. This is a{' '}
+        <IC>POST</IC> to the registration endpoint with a JSON payload containing
+        the account details — including the <IC>nationalID</IC> field.
+      </P>
+
+      {/* ── Step 3 ───────────────────────────────── */}
+      <H2>Step 3 — Bypassing the Verification</H2>
+      <P>
+        The critical question: does the backend verify that the Nafath challenge for
+        the supplied <IC>nationalID</IC> was actually approved before creating the account?
+      </P>
+      <P>
+        To test this, I sent the registration POST request <span className="text-cyber-red font-semibold">
+        immediately after capturing the session tokens — without waiting for or completing
+        the Nafath approval step</span>. I populated the <IC>nationalID</IC> and{' '}
+        <IC>userid</IC> fields with a national ID that was not my own:
+      </P>
+
+      <HttpBox
+        label="Crafted Registration Request — Nafath Skipped"
+        type="request"
+        content={`POST /api/now/sp/widget/<endpoint-id>?id=register HTTP/1.1
+Host: portal.example.com
+Cookie: <session-cookies>
+X-Usertoken: <user-token>
+Content-Type: application/json;charset=UTF-8
+Accept: application/json
+Origin: https://portal.example.com
+Referer: https://portal.example.com/register
+
+{
+  "action":        "register",
+  "nationalID":    "<target-national-id>",
+  "userid":        "<target-national-id>",
+  "first_name":    "Test",
+  "last_name":     "User",
+  "email":         "attacker@example.com",
+  "phone_number":  "0XXXXXXXXX",
+  "password":      "Str0ng@Pass123",
+  // ... UI configuration fields omitted for brevity
+}`}
+      />
+
+      <HttpBox
+        label="Server Response — 201 Created"
+        type="response"
+        content={`HTTP/1.1 201 Created
+Content-Type: application/json
+
+{
+  "result": {
+    "status": "success",
+    "user_created": true
+  }
+}`}
+      />
+
+      <Callout type="danger" title="Bypass Confirmed — No Nafath Validation Performed">
+        The server returned <IC>201 Created</IC> without any Nafath approval ever being
+        issued or received. The backend accepted the registration with the target national
+        ID purely based on the request body — no out-of-band verification with the Nafath
+        API was enforced. The Nafath popup was entirely a client-side ceremony.
+      </Callout>
+
+      {/* ── Step 4 ───────────────────────────────── */}
+      <H2>Step 4 — Confirming Identity Impersonation</H2>
+      <P>
+        With the account created, I navigated to the login page and authenticated using
+        the target national ID as the username and the attacker-chosen password.
+        The login succeeded immediately.
+      </P>
+      <P>
+        To confirm the impersonation was complete and not just a registration artifact,
+        I opened browser DevTools on the authenticated profile page and searched for the
+        national ID in the page state. The target's national ID appeared in the platform's
+        session context — confirming the account was fully registered and authenticated
+        under the victim's government identity.
+      </P>
+
+      <div className="my-5 space-y-2">
+        {[
+          { n: '01', step: 'Initiate Nafath flow → capture session cookies and X-Usertoken',  color: '#9ca3af' },
+          { n: '02', step: 'Send registration POST with victim\'s nationalID — skip Nafath approval', color: '#f97316' },
+          { n: '03', step: 'Server responds 201 Created — account exists under victim\'s national ID', color: '#ff4455' },
+          { n: '04', step: 'Login with victim\'s national ID + attacker\'s password — success',       color: '#ff4455' },
+          { n: '05', step: 'Full access to all platform services under the victim\'s government identity', color: '#ff4455' },
+        ].map(({ n, step, color }) => (
+          <div key={n} className="flex items-start gap-3 glass-card px-4 py-3">
+            <span className="font-mono text-xs font-bold flex-shrink-0 mt-0.5" style={{ color }}>{n}</span>
+            <span className="text-sm text-gray-400">{step}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Impact ───────────────────────────────── */}
+      <H2>Impact Assessment</H2>
+      <div className="glass-card overflow-hidden my-5">
+        <div className="px-5 py-3 bg-cyber-red/10 border-b border-cyber-red/20 font-mono text-xs text-cyber-red font-semibold">
+          CVSS v3.1 Score: 9.8 CRITICAL — AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H
+        </div>
+        <div className="p-5 space-y-3">
+          {[
+            { label: 'Attack Vector',       value: 'Network',    color: '#ff4455' },
+            { label: 'Attack Complexity',   value: 'Low',        color: '#ff4455' },
+            { label: 'Privileges Required', value: 'None',       color: '#ff4455' },
+            { label: 'User Interaction',    value: 'None',       color: '#ff4455' },
+            { label: 'Scope',               value: 'Unchanged',  color: '#9ca3af' },
+            { label: 'Confidentiality',     value: 'High',       color: '#ff4455' },
+            { label: 'Integrity',           value: 'High',       color: '#ff4455' },
+            { label: 'Availability',        value: 'High',       color: '#ff4455' },
+          ].map(({ label, value, color }) => (
+            <div key={label} className="flex items-center justify-between py-1.5 border-b border-cyber-border/20 last:border-0">
+              <span className="font-mono text-xs text-gray-500">{label}</span>
+              <span className="font-mono text-xs font-bold" style={{ color }}>{value}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <P>Confirmed impact of this vulnerability:</P>
+      <ul className="space-y-2 mb-6 ml-2">
+        {[
+          'Complete national identity impersonation — attacker can register as any citizen without their knowledge or device',
+          'Authentication under victim\'s identity — full access to platform services (facility management, license operations, compliance submissions) attributed to the victim',
+          'Abuse of government trust — actions performed by the attacker appear in audit logs as belonging to the legitimate citizen',
+          'Account lockout vector — if the attacker registers first, the legitimate citizen may be unable to register their own ID ("user already exists")',
+          'Credential stuffing amplification — attacker sets their own password for the victim\'s account, enabling persistent access',
+          'Regulatory non-compliance — bypassing Nafath violates Saudi national identity security requirements for e-government services',
+        ].map((item, i) => (
+          <li key={i} className="flex items-start gap-2 text-sm text-gray-400">
+            <span className="text-cyber-red mt-1 flex-shrink-0">→</span>
+            <span>{item}</span>
+          </li>
+        ))}
+      </ul>
+
+      {/* ── Recommendations ──────────────────────── */}
+      <H2>Recommendations &amp; Remediation</H2>
+      <div className="space-y-3 mb-6">
+        {[
+          {
+            num: '01',
+            title: 'Enforce Server-Side Nafath Callback Validation',
+            desc: 'The backend must verify the Nafath approval callback before creating any account. Registration must be blocked until the platform receives and validates a signed, in-scope Nafath approval event for the exact nationalID being registered.',
+            priority: 'P0 — Immediate',
+            color: '#ff4455',
+          },
+          {
+            num: '02',
+            title: 'Bind Registration Sessions to Nafath Outcomes',
+            desc: 'Issue a short-lived, single-use registration token only after a successful Nafath approval callback. The final account creation POST must present this token. Without it, the request must be rejected regardless of what is in the nationalID field.',
+            priority: 'P0 — Immediate',
+            color: '#ff4455',
+          },
+          {
+            num: '03',
+            title: 'Validate nationalID Ownership on the Server',
+            desc: 'The server must cross-reference the nationalID in the request body against the nationalID returned in the Nafath approval payload. Client-supplied values must never be trusted for identity — only the Nafath-verified identity should be used.',
+            priority: 'P1 — Short Term',
+            color: '#facc15',
+          },
+          {
+            num: '04',
+            title: 'Rate-Limit Registration Attempts Per Session',
+            desc: 'Enforce strict rate limits (e.g., 3 attempts per IP per hour) on the registration endpoint to slow brute-force identity enumeration. Flag and alert on any session that submits multiple distinct nationalID values.',
+            priority: 'P2 — Medium Term',
+            color: '#00cfff',
+          },
+        ].map(({ num, title, desc, priority, color }) => (
+          <div key={num} className="glass-card p-4 flex gap-4">
+            <div className="font-mono text-2xl font-bold opacity-20 flex-shrink-0 w-8">{num}</div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-start justify-between gap-3 mb-1.5">
+                <h4 className="font-mono font-semibold text-white text-sm">{title}</h4>
+                <span className="font-mono text-xs px-2 py-0.5 rounded-full border flex-shrink-0" style={{ color, borderColor: color + '50', backgroundColor: color + '10' }}>
+                  <span className="sm:hidden">{priority.split(' — ')[0]}</span>
+                  <span className="hidden sm:inline">{priority}</span>
+                </span>
+              </div>
+              <p className="text-xs text-gray-500 leading-relaxed">{desc}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Timeline ─────────────────────────────── */}
+      <H2>Disclosure Timeline</H2>
+      <div className="glass-card overflow-hidden my-5">
+        {[
+          { date: 'Day 1',  event: 'Registration flow intercepted; Nafath verification popup identified',            color: 'text-gray-400' },
+          { date: 'Day 1',  event: 'Session tokens extracted from Nafath challenge request',                         color: 'text-cyber-blue' },
+          { date: 'Day 1',  event: 'Registration POST sent without completing Nafath — 201 Created returned',        color: 'text-cyber-red' },
+          { date: 'Day 1',  event: 'Login with target national ID confirmed — identity impersonation verified',      color: 'text-cyber-red' },
+          { date: 'Day 1',  event: 'Full report submitted to the bug bounty program with HTTP transcripts',          color: 'text-cyber-green' },
+          { date: 'Day 5',  event: 'Program acknowledged the report and initiated triage',                           color: 'text-gray-400' },
+          { date: 'Day 12', event: 'Vulnerability confirmed as Critical; fix initiated by the security team',        color: 'text-yellow-400' },
+          { date: 'Day 28', event: 'Patch deployed — server-side Nafath callback validation enforced',               color: 'text-cyber-green' },
+        ].map(({ date, event, color }, i) => (
+          <div key={i} className="flex items-start gap-4 px-5 py-3 border-b border-cyber-border/20 last:border-0 hover:bg-cyber-bg/30 transition-colors">
+            <span className="font-mono text-xs text-gray-600 w-12 flex-shrink-0">{date}</span>
+            <span className={`font-mono text-xs ${color}`}>{event}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Conclusion ───────────────────────────── */}
+      <H2>Conclusion</H2>
+      <P>
+        This vulnerability illustrates one of the most dangerous failure modes in
+        third-party authentication integration: implementing the <em>user-facing</em>{' '}
+        flow correctly while neglecting to enforce the verification outcome on the backend.
+        The Nafath popup gave the appearance of strong identity verification — but without
+        a server-side check confirming the approval, it was pure theater.
+      </P>
+      <P>
+        The core principle violated is{' '}
+        <span className="text-cyber-red font-semibold">never trust client-supplied identity claims</span>.
+        The <IC>nationalID</IC> field in the registration payload must be treated as
+        attacker-controlled data. The only value that can be trusted is the one returned
+        by the Nafath API in a verified, signed approval callback — bound to the current
+        session and validated server-side before any account is created.
+      </P>
+      <P>
+        Authentication integrations with national identity systems carry an unusually high
+        responsibility. When Nafath verification is bypassed, the attacker doesn't just
+        gain access to an account — they assume a government-recognized identity, with all
+        the legal, financial, and civic implications that entails.
+      </P>
+
+      <Callout type="info" title="Tools Used in This Assessment">
+        <span className="flex flex-wrap gap-2 mt-1">
+          {['Burp Suite', 'Burp Repeater', 'Browser DevTools', 'Nafath App'].map(t => (
+            <IC key={t}>{t}</IC>
+          ))}
+        </span>
+      </Callout>
+
+    </div>
+  )
+}
+
 /* ─── License IDOR Post ─────────────────────────────── */
 function IDORLicensePost() {
   return (
@@ -1273,12 +1608,14 @@ const SEVERITY_STYLES = {
   Critical: 'bg-cyber-red/10 text-cyber-red border-cyber-red/30',
   High:     'bg-orange-500/10 text-orange-400 border-orange-500/30',
   Medium:   'bg-yellow-500/10 text-yellow-400 border-yellow-500/30',
+  Low:      'bg-cyber-blue/10 text-cyber-blue border-cyber-blue/30',
 }
 
 /* ─── Post router ───────────────────────────────────── */
 function PostContent({ slug }) {
-  if (slug === 'mass-idor-citizen-data-leak')   return <IDORPost />
-  if (slug === 'idor-license-api-enumeration')  return <IDORLicensePost />
+  if (slug === 'mass-idor-citizen-data-leak')        return <IDORPost />
+  if (slug === 'idor-license-api-enumeration')       return <IDORLicensePost />
+  if (slug === 'nafath-auth-bypass-national-id')     return <NafathBypassPost />
   return (
     <div className="text-center py-16 text-gray-600 font-mono text-sm">
       <Shield className="w-10 h-10 mx-auto mb-3 opacity-30" />
